@@ -810,6 +810,82 @@ function updateHud(key, value) {
   }
 }
 
+function updateCarOffset(car, carSegment, playerSegment, playerW) {
+  let dir;
+  const lookahead = 20;
+  const carW = car.sprite.w * SPRITES.SCALE;
+
+  if (carSegment.index - playerSegment.index > drawDistance) {
+    return 0;
+  }
+
+  for (let i = 1; i < lookahead; i++) {
+    const segment = segments[(carSegment.index + i) % segments.length];
+
+    if (
+      segment === playerSegment &&
+      car.speed > speed &&
+      Util.overlap(playerX, playerW, car.offset, carW, 1.2)
+    ) {
+      if (playerX > 0.5) {
+        dir = -1;
+      } else if (playerX < -0.5) {
+        dir = 1;
+      } else {
+        dir = car.offset > playerX ? 1 : -1;
+      }
+
+      return (((dir * 1) / i) * (car.speed - speed)) / maxSpeed;
+    }
+
+    for (let j = 0; j < segment.cars.length; j++) {
+      const otherCar = segment.cars[j];
+      const otherCarW = otherCar.sprite.w * SPRITES.SCALE;
+      if (
+        car.speed > otherCar.speed &&
+        Util.overlap(car.offset, carW, otherCar.offset, otherCarW, 1.2)
+      ) {
+        if (otherCar.offset > 0.5) {
+          dir = -1;
+        } else if (otherCar.offset < -0.5) {
+          dir = 1;
+        } else {
+          dir = car.offset > otherCar.offset ? 1 : -1;
+        }
+
+        return (((dir * 1) / i) * (car.speed - otherCar.speed)) / maxSpeed;
+      }
+    }
+  }
+
+  if (car.offset < -0.9) {
+    return 0.1;
+  }
+
+  if (car.offset > 0.9) {
+    return -0.1;
+  }
+
+  return 0;
+}
+
+function updateCars(dt, playerSegment, playerW) {
+  for (let i = 0; i < cars.length; i++) {
+    const car = cars[i];
+    const oldSegment = findSegment(car.z);
+    car.offset =
+      car.offset + updateCarOffset(car, oldSegment, playerSegment, playerW);
+    car.z = Util.increase(car.z, dt * car.speed, trackLength);
+    car.percent = Util.percentRemaining(car.z, segmentLength);
+    const newSegment = findSegment(car.z);
+    if (oldSegment !== newSegment) {
+      const index = oldSegment.cars.indexOf(car);
+      oldSegment.cars.splice(index, 1);
+      newSegment.cars.push(car);
+    }
+  }
+}
+
 function formatTime(dt) {
   const mins = Math.floor(dt / 60);
   const secs = Math.floor(dt - mins * 60);
@@ -836,6 +912,8 @@ function addSegment(curve, y) {
     p1: { world: { y: lastY(), z: n * segmentLength }, camera: {}, screen: {} },
     p2: { world: { y, z: (n + 1) * segmentLength }, camera: {}, screen: {} },
     curve,
+    sprites: [],
+    cars: [],
     color: Math.floor(n / rumbleLength) % 2 ? COLORS.DARK : COLORS.LIGHT,
   });
 }
@@ -926,8 +1004,19 @@ function addDownhillToEnd(num = 200) {
   addRoad(num, num, num, -ROAD.CURVE.EASY, -lastY() / segmentLength);
 }
 
-function addSprite(n, sprite, offset) {
-  segments[n].sprites.push({ source: sprite, offset });
+function addBumps() {
+  addRoad(10, 10, 10, 0, 5);
+  addRoad(10, 10, 10, 0, -2);
+  addRoad(10, 10, 10, 0, -5);
+  addRoad(10, 10, 10, 0, 8);
+  addRoad(10, 10, 10, 0, 5);
+  addRoad(10, 10, 10, 0, -7);
+  addRoad(10, 10, 10, 0, 5);
+  addRoad(10, 10, 10, 0, -2);
+}
+
+function addSprite(n, source, offset) {
+  segments[n].sprites.push({ source, offset });
 }
 
 function addHill(num = ROAD.LENGTH.MEDIUM, height = ROAD.HILL.MEDIUM) {
@@ -937,24 +1026,12 @@ function addHill(num = ROAD.LENGTH.MEDIUM, height = ROAD.HILL.MEDIUM) {
 function update(dt) {
   const playerSegment = findSegment(position + playerZ);
   const speedPercent = speed / maxSpeed;
+  const playerW = SPRITES.PLAYER_STRAIGHT.w * SPRITES.SCALE;
   const dx = dt * 2 * speedPercent;
-  position = Util.increase(position, dt * speed, trackLength);
+  const startPosition = position;
 
-  skyOffset = Util.increase(
-    skyOffset,
-    skySpeed * playerSegment.curve * speedPercent,
-    1
-  );
-  hillOffset = Util.increase(
-    hillOffset,
-    hillSpeed * playerSegment.curve * speedPercent,
-    1
-  );
-  treeOffset = Util.increase(
-    treeOffset,
-    treeSpeed * playerSegment.curve * speedPercent,
-    1
-  );
+  updateCars(dt, playerSegment, playerW);
+  position = Util.increase(position, dt * speed, trackLength);
 
   if (keyLeft) {
     playerX = playerX - dx;
@@ -972,12 +1049,89 @@ function update(dt) {
     speed = Util.accelerate(speed, decel, dt);
   }
 
-  if ((playerX < -1 || playerX > 1) && speed > offRoadLimit) {
-    speed = Util.accelerate(speed, offRoadDecel, dt);
+  if (playerX < -1 || playerX > 1) {
+    if (speed > offRoadLimit) {
+      speed = Util.accelerate(speed, offRoadDecel, dt);
+    }
+
+    for (let i = 0; i < playerSegment.sprites.length; i++) {
+      const sprite = playerSegment.sprites[i];
+      const spriteW = sprite.source.w * SPRITES.SCALE;
+      if (
+        Util.overlap(
+          playerX,
+          playerW,
+          sprite.offset + (spriteW / 2) * (sprite.offset > 0 ? 1 : -1),
+          spriteW
+        )
+      ) {
+        speed = maxSpeed / 5;
+        position = Util.increase(
+          playerSegment.p1.world.z,
+          -playerZ,
+          trackLength
+        );
+        break;
+      }
+    }
   }
 
-  playerX = Util.limit(playerX, -2, 2);
+  for (let i = 0; i < playerSegment.cars.length; i++) {
+    const car = playerSegment.cars[i];
+    const carW = car.sprite.w * SPRITES.SCALE;
+    if (
+      speed > car.speed &&
+      Util.overlap(playerX, playerW, car.offset, carW, 0.8)
+    ) {
+      speed = car.speed * (car.speed / speed);
+      position = Util.increase(car.z, -playerZ, trackLength);
+      break;
+    }
+  }
+
+  playerX = Util.limit(playerX, -3, 3);
   speed = Util.limit(speed, 0, maxSpeed);
+
+  skyOffset = Util.increase(
+    skyOffset,
+    (skySpeed * playerSegment.curve * (position - startPosition)) /
+      segmentLength,
+    1
+  );
+  hillOffset = Util.increase(
+    hillOffset,
+    (hillSpeed * playerSegment.curve * (position - startPosition)) /
+      segmentLength,
+    1
+  );
+  treeOffset = Util.increase(
+    treeOffset,
+    (treeSpeed * playerSegment.curve * (position - startPosition)) /
+      segmentLength,
+    1
+  );
+
+  if (position > playerZ) {
+    if (currentLapTime != null && startPosition < playerZ) {
+      lastLapTime = currentLapTime;
+      currentLapTime = 0;
+
+      if (lastLapTime <= Util.toFloat(localStorage.fast_lap_time)) {
+        localStorage.fast_lap_time = lastLapTime;
+        updateHud("fast_lap_time", formatTime(lastLapTime));
+        DOM.addClassName("fast_lap_time", "fastest");
+        DOM.addClassName("last_lap_time", "fastest");
+      } else {
+        DOM.removeClassName("fast_lap_time", "fastest");
+        DOM.removeClassName("last_lap_time", "fastest");
+      }
+    } else {
+      currentLapTime += dt;
+    }
+  }
+
+  updateHud("speed", 5 * Math.round(speed / 500));
+  updateHud("current_lap_time", formatTime(currentLapTime));
 }
 
 function render() {
@@ -1032,6 +1186,7 @@ function render() {
     const segment = segments[(baseSegment.index + i) % segments.length];
     segment.looped = segment.index < baseSegment.index;
     segment.fog = Util.exponentialFog(i / drawDistance, fogDensity);
+    segment.clip = maxy;
 
     Util.project(
       segment.p1,
@@ -1082,50 +1237,193 @@ function render() {
     maxy = segment.p2.screen.y;
   }
 
-  Render.player(
-    ctx,
-    width,
-    height,
-    resolution,
-    roadWidth,
-    sprites,
-    speed / maxSpeed,
-    cameraDepth / playerZ,
-    width / 2,
-    height / 2 -
-      ((cameraDepth / playerZ) *
+  for (let n = drawDistance - 1; n > 0; n--) {
+    const segment = segments[(baseSegment.index + n) % segments.length];
+
+    for (let i = 0; i < segment.cars.length; i++) {
+      const car = segment.cars[i];
+      const sprite = car.sprite;
+      const spriteScale = Util.interpolate(
+        segment.p1.screen.scale,
+        segment.p2.screen.scale,
+        car.percent
+      );
+      const spriteX =
         Util.interpolate(
-          playerSegment.p1.camera.y,
-          playerSegment.p2.camera.y,
-          playerPercent
-        ) *
-        height) /
-        2,
-    speed * (keyLeft ? -1 : keyRight ? 1 : 0),
-    playerSegment.p2.world.y - playerSegment.p1.world.y
-  );
+          segment.p1.screen.x,
+          segment.p2.screen.x,
+          car.percent
+        ) +
+        (spriteScale * car.offset * roadWidth * width) / 2;
+      const spriteY = Util.interpolate(
+        segment.p1.screen.y,
+        segment.p2.screen.y,
+        car.percent
+      );
+
+      Render.sprite(
+        ctx,
+        width,
+        height,
+        resolution,
+        roadWidth,
+        sprites,
+        sprite,
+        spriteScale,
+        spriteX,
+        spriteY,
+        -0.5,
+        -1,
+        segment.clip
+      );
+    }
+
+    for (let i = 0; i < segment.sprites.length; i++) {
+      const sprite = segment.sprites[i];
+      const spriteScale = segment.p1.screen.scale;
+      const spriteX =
+        segment.p1.screen.x +
+        (spriteScale * sprite.offset * roadWidth * width) / 2;
+      const spriteY = segment.p1.screen.y;
+      Render.sprite(
+        ctx,
+        width,
+        height,
+        resolution,
+        roadWidth,
+        sprites,
+        sprite.source,
+        spriteScale,
+        spriteX,
+        spriteY,
+        sprite.offset < 0 ? -1 : 0,
+        -1,
+        segment.clip
+      );
+    }
+
+    if (segment === playerSegment) {
+      Render.player(
+        ctx,
+        width,
+        height,
+        resolution,
+        roadWidth,
+        sprites,
+        speed / maxSpeed,
+        cameraDepth / playerZ,
+        width / 2,
+        height / 2 -
+          ((cameraDepth / playerZ) *
+            Util.interpolate(
+              playerSegment.p1.camera.y,
+              playerSegment.p2.camera.y,
+              playerPercent
+            ) *
+            height) /
+            2,
+        speed * (keyLeft ? -1 : keyRight ? 1 : 0),
+        playerSegment.p2.world.y - playerSegment.p1.world.y
+      );
+    }
+  }
 }
 
 function lastY() {
   return segments.length === 0 ? 0 : segments[segments.length - 1].p2.world.y;
 }
 
+function resetSprites() {
+  addSprite(20, SPRITES.BILLBOARD07, -1);
+  addSprite(40, SPRITES.BILLBOARD06, -1);
+  addSprite(60, SPRITES.BILLBOARD08, -1);
+  addSprite(80, SPRITES.BILLBOARD09, -1);
+  addSprite(100, SPRITES.BILLBOARD01, -1);
+  addSprite(120, SPRITES.BILLBOARD02, -1);
+  addSprite(140, SPRITES.BILLBOARD03, -1);
+  addSprite(160, SPRITES.BILLBOARD04, -1);
+  addSprite(180, SPRITES.BILLBOARD05, -1);
+
+  addSprite(240, SPRITES.BILLBOARD07, -1.2);
+  addSprite(240, SPRITES.BILLBOARD06, 1.2);
+  addSprite(segments.length - 25, SPRITES.BILLBOARD07, -1.2);
+  addSprite(segments.length - 25, SPRITES.BILLBOARD06, 1.2);
+
+  for (let i = 10; i < 200; i += 4 + Math.floor(i / 100)) {
+    addSprite(i, SPRITES.PALM_TREE, 0.5 + Math.random() * 0.5);
+    addSprite(i, SPRITES.PALM_TREE, 1 + Math.random() * 2);
+  }
+
+  for (let i = 250; i < 1000; i += 5) {
+    addSprite(i, SPRITES.COLUMN, 1.1);
+    addSprite(i + Util.randomInt(0, 5), SPRITES.TREE1, -1 - Math.random() * 2);
+    addSprite(i + Util.randomInt(0, 5), SPRITES.TREE2, -1 - Math.random() * 2);
+  }
+
+  for (let i = 200; i < segments.length; i += 3) {
+    addSprite(
+      i,
+      Util.randomChoice(SPRITES.PLANTS),
+      Util.randomChoice([1, -1]) * (2 + Math.random() * 5)
+    );
+  }
+
+  for (let i = 1000; i < segments.length - 50; i += 100) {
+    const side = Util.randomChoice([1, -1]);
+    addSprite(
+      i + Util.randomInt(0, 50),
+      Util.randomChoice(SPRITES.BILLBOARDS),
+      -side
+    );
+
+    for (let j = 0; j < 20; j++) {
+      const sprite = Util.randomChoice(SPRITES.PLANTS);
+      const offset = side * (1.5 + Math.random());
+      addSprite(i + Util.randomInt(0, 50), sprite, offset);
+    }
+  }
+}
+
+function resetCars() {
+  cars = [];
+  for (let i = 0; i < totalCars; i++) {
+    const offset = Math.random() * Util.randomChoice([-0.8, 0.8]);
+    const z = Math.floor(Math.random() * segments.length) * segmentLength;
+    const sprite = Util.randomChoice(SPRITES.CARS);
+    const speed =
+      maxSpeed / 4 +
+      (Math.random() * maxSpeed) / (sprite === SPRITES.SEMI ? 4 : 2);
+    const car = { offset, z, sprite, speed };
+    const segment = findSegment(car.z);
+    segment.cars.push(car);
+    cars.push(car);
+  }
+}
+
 function resetRoad() {
   segments = [];
 
-  addStraight(ROAD.LENGTH.SHORT / 2);
-  addHill(ROAD.LENGTH.SHORT, ROAD.HILL.LOW);
+  addStraight(ROAD.LENGTH.SHORT);
   addLowRollingHills();
+  addSCurves();
   addCurve(ROAD.LENGTH.MEDIUM, ROAD.CURVE.MEDIUM, ROAD.HILL.LOW);
+  addBumps();
   addLowRollingHills();
-  addCurve(ROAD.LENGTH.LONG, ROAD.CURVE.MEDIUM, ROAD.HILL.MEDIUM);
+  addCurve(ROAD.LENGTH.LONG * 2, ROAD.CURVE.MEDIUM, ROAD.HILL.MEDIUM);
   addStraight();
-  addCurve(ROAD.LENGTH.LONG, -ROAD.CURVE.MEDIUM, ROAD.HILL.MEDIUM);
+  addHill(ROAD.LENGTH.MEDIUM, ROAD.HILL.HIGH);
+  addSCurves();
+  addCurve(ROAD.LENGTH.LONG, -ROAD.CURVE.MEDIUM, ROAD.HILL.NONE);
   addHill(ROAD.LENGTH.LONG, ROAD.HILL.HIGH);
   addCurve(ROAD.LENGTH.LONG, ROAD.CURVE.MEDIUM, -ROAD.HILL.LOW);
+  addBumps();
   addHill(ROAD.LENGTH.LONG, -ROAD.HILL.MEDIUM);
   addStraight();
+  addSCurves();
   addDownhillToEnd();
+
+  resetSprites();
+  resetCars();
 
   segments[findSegment(playerZ).index + 2].color = COLORS.START;
   segments[findSegment(playerZ).index + 3].color = COLORS.START;
@@ -1244,11 +1542,11 @@ document.addEventListener("DOMContentLoaded", () => {
       background = imgs[0];
       sprites = imgs[1];
       reset();
-      // localStorage.fast_lap_time = localStorage.fast_lap_time || 180;
-      // updateHud(
-      //   "fast_lap_time",
-      //   formatTime(Util.toFloat(localStorage.fast_lap_time))
-      // );
+      localStorage.fast_lap_time = localStorage.fast_lap_time || 180;
+      updateHud(
+        "fast_lap_time",
+        formatTime(Util.toFloat(localStorage.fast_lap_time))
+      );
     },
   });
 
