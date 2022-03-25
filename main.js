@@ -15,11 +15,11 @@ const COLORS = {
   FOG: "#005108",
   LIGHT: {
     road: "#6B6B6B",
-    grass: "#10AA10",
     rumble: "#555555",
     lane: "#CCCCCC",
+    sand: "#EFDD6F",
   },
-  DARK: { road: "#696969", grass: "#009A00", rumble: "#BBBBBB" },
+  DARK: { road: "#696969", sand: "#CDAA6D", rumble: "#BBBBBB" },
   START: { road: "white", grass: "white", rumble: "white" },
   FINISH: { road: "black", grass: "black", rumble: "black" },
 };
@@ -441,7 +441,7 @@ class Render {
     const l1 = this.laneMarkerWidth(w1, lanes);
     const l2 = this.laneMarkerWidth(w2, lanes);
 
-    ctx.fillStyle = color.grass;
+    ctx.fillStyle = color.sand;
     ctx.fillRect(0, y2, width, y1 - y2);
 
     this.polygon(
