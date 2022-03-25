@@ -39,7 +39,6 @@ const ROAD = {
 const SPRITES = {
   PALM_TREE: { x: 5, y: 5, w: 215, h: 540 },
   BILLBOARD08: { x: 230, y: 5, w: 385, h: 265 },
-  TREE1: { x: 625, y: 5, w: 360, h: 360 },
   DEAD_TREE1: { x: 5, y: 555, w: 135, h: 332 },
   BILLBOARD09: { x: 150, y: 555, w: 328, h: 282 },
   BOULDER3: { x: 230, y: 280, w: 320, h: 220 },
@@ -49,7 +48,6 @@ const SPRITES = {
   BILLBOARD05: { x: 5, y: 897, w: 298, h: 190 },
   BILLBOARD07: { x: 313, y: 897, w: 298, h: 190 },
   BOULDER2: { x: 621, y: 897, w: 298, h: 140 },
-  TREE2: { x: 1205, y: 5, w: 282, h: 295 },
   BILLBOARD04: { x: 1205, y: 310, w: 268, h: 170 },
   DEAD_TREE2: { x: 1205, y: 490, w: 150, h: 260 },
   BOULDER1: { x: 1205, y: 760, w: 168, h: 248 },
@@ -87,8 +85,6 @@ SPRITES.BILLBOARDS = [
   SPRITES.BILLBOARD09,
 ];
 SPRITES.PLANTS = [
-  SPRITES.TREE1,
-  SPRITES.TREE2,
   SPRITES.DEAD_TREE1,
   SPRITES.DEAD_TREE2,
   SPRITES.PALM_TREE,
@@ -1352,12 +1348,6 @@ function resetSprites() {
   for (let i = 10; i < 200; i += 4 + Math.floor(i / 100)) {
     addSprite(i, SPRITES.PALM_TREE, 0.5 + Math.random() * 0.5);
     addSprite(i, SPRITES.PALM_TREE, 1 + Math.random() * 2);
-  }
-
-  for (let i = 250; i < 1000; i += 5) {
-    addSprite(i, SPRITES.COLUMN, 1.1);
-    addSprite(i + Util.randomInt(0, 5), SPRITES.TREE1, -1 - Math.random() * 2);
-    addSprite(i + Util.randomInt(0, 5), SPRITES.TREE2, -1 - Math.random() * 2);
   }
 
   for (let i = 200; i < segments.length; i += 3) {
