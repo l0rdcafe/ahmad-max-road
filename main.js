@@ -1108,7 +1108,7 @@ function update(dt) {
   );
 
   if (position > playerZ) {
-    if (currentLapTime != null && startPosition < playerZ) {
+    if (currentLapTime > 0 && startPosition < playerZ) {
       lastLapTime = currentLapTime;
       currentLapTime = 0;
 
@@ -1121,6 +1121,8 @@ function update(dt) {
         DOM.removeClassName("fast_lap_time", "fastest");
         DOM.removeClassName("last_lap_time", "fastest");
       }
+      updateHud("last_lap_time", formatTime(lastLapTime));
+      DOM.show("last_lap_time");
     } else {
       currentLapTime += dt;
     }
@@ -1532,11 +1534,9 @@ document.addEventListener("DOMContentLoaded", () => {
       background = imgs[0];
       sprites = imgs[1];
       reset();
-      localStorage.fast_lap_time = localStorage.fast_lap_time || 180;
-      updateHud(
-        "fast_lap_time",
-        formatTime(Util.toFloat(localStorage.fast_lap_time))
-      );
+      const fastestTime = localStorage.fast_lap_time ?? 180;
+      localStorage.fast_lap_time = fastestTime;
+      updateHud("fast_lap_time", formatTime(Util.toFloat(fastestTime)));
     },
   });
 
